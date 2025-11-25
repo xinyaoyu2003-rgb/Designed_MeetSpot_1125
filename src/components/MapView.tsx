@@ -1,5 +1,5 @@
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents } from 'react-leaflet';
-import type { LeafletMouseEvent, LatLngExpression } from 'leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from 'react-leaflet';
+import { useEffect } from 'react';
 import { LatLng } from '../context/PlannerContext';
 
 export type Poi = {
@@ -12,18 +12,27 @@ export type Poi = {
 };
 
 type LatLngTuple = [number, number];
+type LeafletMouseEventLike = { latlng: { lat: number; lng: number } };
 
 function EventsBinder({ onPickA, onPickB }: { onPickA?: (latlng: LatLng) => void; onPickB?: (latlng: LatLng) => void }) {
   useMapEvents({
-    click(e: LeafletMouseEvent) {
+    click(e: LeafletMouseEventLike) {
       const latlng = { lat: e.latlng.lat, lng: e.latlng.lng };
       if (onPickA) onPickA(latlng);
     },
-    contextmenu(e: LeafletMouseEvent) {
+    contextmenu(e: LeafletMouseEventLike) {
       const latlng = { lat: e.latlng.lat, lng: e.latlng.lng };
       if (onPickB) onPickB(latlng);
     },
   });
+  return null;
+}
+
+function SetView({ center, zoom }: { center: LatLngTuple; zoom: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center as any, zoom);
+  }, [map, center, zoom]);
   return null;
 }
 
@@ -34,7 +43,7 @@ export default function MapView({ a, b, pois, onPickA, onPickB }: {
   onPickA?: (latlng: LatLng) => void;
   onPickB?: (latlng: LatLng) => void;
 }) {
-  const center: LatLngExpression = [
+  const center: LatLngTuple = [
     (a?.lat ?? b?.lat ?? 31.2304),
     (a?.lng ?? b?.lng ?? 121.4737)
   ]; // 默认上海中心坐标
@@ -46,21 +55,22 @@ export default function MapView({ a, b, pois, onPickA, onPickB }: {
   });
 
   return (
-    <MapContainer center={center} zoom={12} style={{ height: 420 }}>
+    <MapContainer style={{ height: 420 }}>
+      <SetView center={center} zoom={12} />
       <EventsBinder onPickA={onPickA} onPickB={onPickB} />
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       {a && (
-        <Marker position={[a.lat, a.lng] as LatLngExpression}>
+        <Marker position={[a.lat, a.lng] as any}>
           <Popup>好友 A</Popup>
         </Marker>
       )}
       {b && (
-        <Marker position={[b.lat, b.lng] as LatLngExpression}>
+        <Marker position={[b.lat, b.lng] as any}>
           <Popup>好友 B</Popup>
         </Marker>
       )}
       {pois.map((p) => (
-        <Marker key={p.id} position={[p.latlng.lat, p.latlng.lng] as LatLngExpression}>
+        <Marker key={p.id} position={[p.latlng.lat, p.latlng.lng] as any}>
           <Popup>
             <div>
               <strong>{p.name}</strong><br />评分 {p.rating.toFixed(1)}｜人均 ¥{p.price}

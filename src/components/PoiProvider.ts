@@ -75,12 +75,24 @@ export async function searchPOIs(center: LatLng, keyword: string, budgetHint: 'l
   return list;
 }
 
-export async function autocompleteAddresses(query: string): Promise<Suggestion[]> {
+// 常用城市的近似中心与搜索半径（米），用于偏向或限定自动补全结果到指定城市
+const CITY_CENTER: Record<string, { lat: number; lng: number; radius: number }> = {
+  '上海市': { lat: 31.2304, lng: 121.4737, radius: 30000 },
+  '北京市': { lat: 39.9042, lng: 116.4074, radius: 30000 },
+  '杭州市': { lat: 30.2741, lng: 120.1551, radius: 25000 },
+  '广州市': { lat: 23.1291, lng: 113.2644, radius: 30000 },
+  '深圳市': { lat: 22.5431, lng: 114.0579, radius: 30000 },
+};
+
+export async function autocompleteAddresses(query: string, city?: string): Promise<Suggestion[]> {
   if (!query.trim()) return [];
   const suggestions: Suggestion[] = [];
   try {
     if (GOOGLE_KEY) {
-      const autoUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&language=zh-CN&key=${GOOGLE_KEY}`;
+      // 限制到中国区域，并在提供城市时偏向该城市
+      const cityCfg = city ? CITY_CENTER[city] : undefined;
+      const locationParam = cityCfg ? `&location=${cityCfg.lat},${cityCfg.lng}&radius=${cityCfg.radius}&strictbounds=true` : '';
+      const autoUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&language=zh-CN&components=country:cn${locationParam}&key=${GOOGLE_KEY}`;
       const autoRes = await fetch(autoUrl);
       const autoData = await autoRes.json();
       if (Array.isArray(autoData.predictions)) {
@@ -89,7 +101,10 @@ export async function autocompleteAddresses(query: string): Promise<Suggestion[]
           const detRes = await fetch(detUrl);
           const detData = await detRes.json();
           const loc = detData.result?.geometry?.location;
-          if (loc) suggestions.push({ label: detData.result.formatted_address || pred.description, latlng: { lat: loc.lat, lng: loc.lng } });
+          const label = detData.result?.formatted_address || pred.description;
+          const addrComps: any[] = detData.result?.address_components || [];
+          const matchCity = !city || (typeof label === 'string' && label.includes(city)) || addrComps.some((c:any) => c.long_name === city);
+          if (loc && matchCity) suggestions.push({ label, latlng: { lat: loc.lat, lng: loc.lng } });
         }
         if (suggestions.length) return suggestions;
       }
@@ -98,7 +113,8 @@ export async function autocompleteAddresses(query: string): Promise<Suggestion[]
 
   try {
     if (AMAP_KEY) {
-      const url = `https://restapi.amap.com/v3/assistant/inputtips?keywords=${encodeURIComponent(query)}&key=${AMAP_KEY}`;
+      const cityParam = city ? `&city=${encodeURIComponent(city)}` : '';
+      const url = `https://restapi.amap.com/v3/assistant/inputtips?keywords=${encodeURIComponent(query)}${cityParam}&key=${AMAP_KEY}`;
       const res = await fetch(url);
       const data = await res.json();
       if (Array.isArray(data.tips)) {
@@ -106,7 +122,9 @@ export async function autocompleteAddresses(query: string): Promise<Suggestion[]
           const [lngStr, latStr] = (tip.location || '').split(',');
           const lat = parseFloat(latStr);
           const lng = parseFloat(lngStr);
-          if (!isNaN(lat) && !isNaN(lng)) suggestions.push({ label: tip.name || tip.address, latlng: { lat, lng } });
+          const label = tip.name || tip.address;
+          const matchCity = !city || (typeof tip.district === 'string' && tip.district.includes(city)) || (typeof label === 'string' && label.includes(city));
+          if (!isNaN(lat) && !isNaN(lng) && matchCity) suggestions.push({ label, latlng: { lat, lng } });
         }
         if (suggestions.length) return suggestions;
       }
@@ -114,11 +132,14 @@ export async function autocompleteAddresses(query: string): Promise<Suggestion[]
   } catch {}
 
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`;
+    // 限制到中国区域，并在提供城市时为查询增加城市关键词
+    const q = city ? `${city} ${query}` : query;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=cn`;
     const res = await fetch(url, { headers: { 'Accept-Language': 'zh-CN' } });
     const data = await res.json();
     if (Array.isArray(data)) {
-      return data.map((item:any) => ({ label: item.display_name, latlng: { lat: parseFloat(item.lat), lng: parseFloat(item.lon) } }));
+      const list = data.map((item:any) => ({ label: item.display_name, latlng: { lat: parseFloat(item.lat), lng: parseFloat(item.lon) } }));
+      return city ? list.filter((s:Suggestion) => typeof s.label === 'string' && s.label.includes(city)) : list;
     }
   } catch {}
 

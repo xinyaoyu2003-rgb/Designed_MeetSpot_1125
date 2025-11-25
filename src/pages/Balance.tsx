@@ -226,7 +226,7 @@ export default function Balance() {
           好友 A 地址
           <input id="addrA" placeholder="例如：上海市黄浦区南京东路" value={aInput} onChange={async (e) => {
             const v = e.target.value; setAInput(v);
-            const tips = await autocompleteAddresses(v);
+            const tips = await autocompleteAddresses(v, city);
             setATips(tips);
           }} />
           {aTips.length > 0 && (
@@ -244,7 +244,7 @@ export default function Balance() {
           好友 B 地址
           <input id="addrB" placeholder="例如：上海市静安区北京西路" value={bInput} onChange={async (e) => {
             const v = e.target.value; setBInput(v);
-            const tips = await autocompleteAddresses(v);
+            const tips = await autocompleteAddresses(v, city);
             setBTips(tips);
           }} />
           {bTips.length > 0 && (
